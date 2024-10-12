@@ -77,7 +77,7 @@ def parse_args():
 
 # 定义处理任务的函数
 def process_person_keypoints(model, inputs, targets, meta_info, person_id):
-    print(f"Processing person {person_id} on device: {next(model.parameters()).device}")
+    # print(f"Processing person {person_id} on device: {next(model.parameters()).device}")
     with torch.no_grad():
         output = model(inputs, targets, meta_info, 'test')
     
@@ -90,11 +90,14 @@ def process_person_keypoints(model, inputs, targets, meta_info, person_id):
 # 初始化多个模型实例，并分配到CPU或GPU
 def init_models(num_models, device='cuda'):
     models = []
+    model_lode_time = time.time()
     for i in range(num_models):
         model = get_model(vertex_num, joint_num, 'test')  # 从 demo_jiehe.py 获取模型
         model = model.to(device)
         model.eval()
         models.append(model)
+    
+    print(f'所有模型加载时间: {time.time() - model_lode_time}')
     return models
 
 
@@ -124,7 +127,7 @@ def scheduler(models, output_file_path):
             print(f"Failed to load image: {img_path}")
             continue  # 跳过该图像并处理下一个
 
-        print(f'获取到图片: {img_path}')
+        # print(f'获取到图片: {img_path}')
         input = original_img.copy()
         input2 = original_img.copy()
         original_img_height, original_img_width = original_img.shape[:2]
@@ -139,6 +142,9 @@ def scheduler(models, output_file_path):
 
         drawn_joints = []
         c = coco_joint_list
+
+    task_times = []
+    start_time = time.time()
 
     # 创建线程池
     with ThreadPoolExecutor(max_workers=num_models) as executor:
@@ -204,17 +210,29 @@ def scheduler(models, output_file_path):
             meta_info = {'bbox': bbox}
 
             model = models[i % num_models]  # 轮流使用每个模型
+            task_start_time = time.time()
             # 提交任务到线程池
             futures.append(executor.submit(process_person_keypoints, model, inputs, targets, meta_info, i))
-        
+            # print(f'提交任务到线程池: {i}, 用时: {time.time() - task_start_time}')
+
         # 获取所有线程的执行结果
         for future in as_completed(futures):
+            task_end_time = time.time()
+            task_times.append(task_end_time - task_start_time)
             results.append(future.result())
+
+
+    #将task_times的结果从后面的时间减去前面的时间，得到每个任务的用时
+    task_times = [task_times[i] - task_times[i-1] for i in range(1, len(task_times))]
 
     # 保存所有结果到JSON文件
     with open(output_file_path, 'w') as f:
         json.dump(results, f, indent=4)  # 保存为JSON文件
     
+    print(f'每个任务用时: {task_times}')
+    print(f'所有任务已完成，总用时: {time.time() - start_time}')
+    print(f'从加载模型到处理所有任务的总时间: {time.time() - init_time}')
+
     return results
 
 
@@ -349,11 +367,14 @@ assert osp.exists(model_path), 'Cannot find model at ' + model_path
 num_models = 4
 device = 'cuda'  # 可以替换为'cpu'或者具体的GPU，比如'cuda:0'
 
+init_time = time.time()
 models = init_models(num_models, device)
 
 # 获取YOLO识别到的人物关键点数据
 # person_keypoints_data = yolo_detected_data()
 
-# 调度并行处理关键点数据
-results = scheduler(models)
+output_file_path = 'output_results1.json'  # 指定输出文件路径
 
+# 调度并行处理关键点数据
+results = scheduler(models, output_file_path)
+print(f'结果已保存到 {output_file_path}')

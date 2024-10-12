@@ -199,7 +199,7 @@ vis_skeleton = ((0, 1), (0, 2), (2, 4), (1, 3), (5, 7), (7, 9), (12, 14), (14, 1
 # snapshot load
 model_path = args.model_path
 assert osp.exists(model_path), 'Cannot find model at ' + model_path 
-print('Load checkpoint from {}'.format(model_path))
+# print('Load checkpoint from {}'.format(model_path))
 model = get_model(vertex_num, joint_num, 'test')
 
 loadModel_time = time.time() 
@@ -209,6 +209,7 @@ model = DataParallel(model).cuda()
 ckpt = torch.load(model_path)
 model.load_state_dict(ckpt['network'], strict=False)
 model.eval()
+print(f'单个模型加载时间: {time.time() - loadModel_time}')
 
 # pose_model_run()
 
@@ -234,7 +235,7 @@ for img_name in sorted(pose2d_result.keys()):
         print(f"Failed to load image: {img_path}")
         continue  # 跳过该图像并处理下一个
 
-    print(f'获取到图片: {img_path}')
+    # print(f'获取到图片: {img_path}')
     input = original_img.copy()
     input2 = original_img.copy()
     original_img_height, original_img_width = original_img.shape[:2]
@@ -251,6 +252,9 @@ for img_name in sorted(pose2d_result.keys()):
     c = coco_joint_list
     # manually assign the order of output meshes
     # coco_joint_list = [c[2], c[0], c[1], c[4], c[3]]
+
+    model_times = []
+    start_time = time.time()
 
     for idx in range(len(coco_joint_list)):
         """ 2D pose input setting & hard-coding for filtering """
@@ -312,15 +316,16 @@ for img_name in sorted(pose2d_result.keys()):
         targets = {}
         meta_info = {'bbox': bbox}
 
-        image_count = 1
+        # image_count = 1
         model_time = time.time()
         #调用模型进行前向推理，输出3D mesh的预测结果 (mesh_cam_render)，包括每个顶点的3D坐标
         with torch.no_grad():
             image_time = time.time()    
             out = model(inputs, targets, meta_info, 'test')
-            print(f'{image_count} Image time: {time.time() - image_time} Sec')
-            image_count += 1
-        print(f'Model time: {time.time() - model_time} Sec')
+            # print(f'{image_count} Image time: {time.time() - image_time} Sec')
+            # image_count += 1
+            model_times.append(time.time() - model_time)
+        # print(f'Model time: {time.time() - model_time} Sec')
 
         # draw output mesh
         # print(f'开始进行3D mesh渲染')
@@ -341,7 +346,6 @@ for img_name in sorted(pose2d_result.keys()):
 
 
 
-
         # for coord in mesh_cam_render:
         #     print(f'3D Coordinate: X={coord[0]}, Y={coord[1]}, Z={coord[2]}')
         # 将3D坐标保存为json
@@ -351,11 +355,12 @@ for img_name in sorted(pose2d_result.keys()):
             json.dump(output_data, f)
 
         file_name = f'{output_dir}/{img_path.split("/")[-1][:-4]}_{idx}.jpg'
-        print("file name: ", file_name)
+        # print("file name: ", file_name)
         save_obj(mesh_cam_render, face, file_name=f'{output_dir}/{img_path.split("/")[-1][:-4]}_{idx}.obj')
         cv2.imwrite(file_name, original_img)
         
-
-print(f'Last model time: {time.time() - loadModel_time}')
+print(f'每个任务用时: {model_times}')
+print(f'所有任务已完成，总用时: {time.time() - start_time}')
+print(f'从加载模型到处理所有任务的总时间: {time.time() - loadModel_time}')
 cap.release()
 cv2.destroyAllWindows()
