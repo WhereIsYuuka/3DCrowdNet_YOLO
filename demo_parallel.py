@@ -228,10 +228,13 @@ def scheduler(models, output_file_path):
     # 保存所有结果到JSON文件
     with open(output_file_path, 'w') as f:
         json.dump(results, f, indent=4)  # 保存为JSON文件
-    
+
+    all_model_time = time.time()
+
     print(f'每个任务用时: {task_times}')
-    print(f'所有任务已完成，总用时: {time.time() - start_time}')
-    print(f'从加载模型到处理所有任务的总时间: {time.time() - init_time}')
+    print(f'所有任务用时: {sum(task_times)}')
+    print(f'所有任务已完成，总用时: {all_model_time - start_time}')
+    print(f'从加载模型到处理所有任务的总时间: {all_model_time - init_time}')
 
     return results
 

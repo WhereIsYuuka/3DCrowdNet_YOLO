@@ -324,7 +324,8 @@ for img_name in sorted(pose2d_result.keys()):
             out = model(inputs, targets, meta_info, 'test')
             # print(f'{image_count} Image time: {time.time() - image_time} Sec')
             # image_count += 1
-            model_times.append(time.time() - model_time)
+            model_time = time.time()
+            model_times.append(model_time - model_time)
         # print(f'Model time: {time.time() - model_time} Sec')
 
         # draw output mesh
@@ -358,9 +359,11 @@ for img_name in sorted(pose2d_result.keys()):
         # print("file name: ", file_name)
         save_obj(mesh_cam_render, face, file_name=f'{output_dir}/{img_path.split("/")[-1][:-4]}_{idx}.obj')
         cv2.imwrite(file_name, original_img)
-        
+
+all_model_time = time.time()
 print(f'每个任务用时: {model_times}')
-print(f'所有任务已完成，总用时: {time.time() - start_time}')
-print(f'从加载模型到处理所有任务的总时间: {time.time() - loadModel_time}')
+print(f'所有任务用时: {sum(model_times)}')
+print(f'所有任务已完成，总用时: {all_model_time - start_time}')
+print(f'从加载模型到处理所有任务的总时间: {all_model_time - loadModel_time}')
 cap.release()
 cv2.destroyAllWindows()
