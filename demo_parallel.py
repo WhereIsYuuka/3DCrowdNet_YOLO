@@ -17,6 +17,7 @@ from torch.nn.parallel.data_parallel import DataParallel
 import torch.backends.cudnn as cudnn
 import matplotlib.pyplot as plt
 from ultralytics import YOLO
+from torchsummary import summary
 
 
 sys.path.insert(0, osp.join('..', 'main'))
@@ -76,28 +77,54 @@ def parse_args():
     return args
 
 # 定义处理任务的函数
-def process_person_keypoints(model, inputs, targets, meta_info, person_id):
+def process_person_keypoints(model, inputs, targets, meta_info, original_img, face, file_name, person_id):
     # print(f"Processing person {person_id} on device: {next(model.parameters()).device}")
     with torch.no_grad():
+
+        # 打印输入数据的形状
+        # print(f'输入数据的形状: {inputs["img"].shape}')
+
         output = model(inputs, targets, meta_info, 'test')
+
+        # 打印输出的形状
+        # for key, value in output.items():
+        #     print(f'输出 {key} 的形状: {value.shape}')
     
+    # return {output['mesh_cam_render'][0].cpu().numpy().tolist()}
     keypoints_3d = output['mesh_cam_render'][0].cpu().numpy()  # 这只是一个示例，具体取决于模型输出
+    # save_obj(keypoints_3d, face, file_name=f'output2/{person_id}.obj')
+    
+    bbox = output['bbox'][0].cpu().numpy()
+    princpt = (bbox[0] + bbox[2] / 2, bbox[1] + bbox[3] / 2)
+    color = colorsys.hsv_to_rgb(np.random.rand(), 0.5, 1.0)
+    original_img = render_mesh(original_img, keypoints_3d, face, {'focal': cfg.focal, 'princpt': princpt}, color=color)
+    cv2.imwrite(file_name, original_img)
+
     return {
         'person_id': person_id,
         'keypoints_3d': keypoints_3d.tolist()  # 将3D关键点转换为列表
     }
 
 # 初始化多个模型实例，并分配到CPU或GPU
-def init_models(num_models, device='cuda'):
+def init_models(num_models, vertex_num, joint_num, device='cuda'):
     models = []
     model_lode_time = time.time()
     for i in range(num_models):
         model = get_model(vertex_num, joint_num, 'test')  # 从 demo_jiehe.py 获取模型
-        model = model.to(device)
+        # model = model.to(device)
+        model = DataParallel(model).cuda()
+        #加载模型检查点 ckpt。将检查点中的网络参数加载到模型中，strict=False 表示允许部分参数不匹配。最后，将模型设置为评估模式 eval()
+        ckpt = torch.load(model_path)
+        model.load_state_dict(ckpt['network'], strict=False)
         model.eval()
         models.append(model)
     
     print(f'所有模型加载时间: {time.time() - model_lode_time}')
+    # summary(model)
+    # summary(model, input_size=(3, 224, 224))
+    # dummy_input = torch.randn(1, 3, 224, 224).to(device)  # 以 224x224 图像为例
+    # print(f'输入张量的形状: {dummy_input.shape}')
+    
     return models
 
 
@@ -209,10 +236,10 @@ def scheduler(models, output_file_path):
             targets = {}
             meta_info = {'bbox': bbox}
 
-            model = models[i % num_models]  # 轮流使用每个模型
+            model = models[idx % num_models]  # 轮流使用每个模型
             task_start_time = time.time()
             # 提交任务到线程池
-            futures.append(executor.submit(process_person_keypoints, model, inputs, targets, meta_info, i))
+            futures.append(executor.submit(process_person_keypoints, model, inputs, targets, meta_info, original_img, face, f'output2/{image_name}_{idx}.jpg', idx))
             # print(f'提交任务到线程池: {i}, 用时: {time.time() - task_start_time}')
 
         # 获取所有线程的执行结果
@@ -243,13 +270,15 @@ def scheduler(models, output_file_path):
 # 导入YOLO模型
 model_yolo = YOLO("./yolov8m-pose.pt")
 # image_path = "C:/Users/Liu/Desktop/100707.jpg"
-image_path = "./input/100083.jpg"
-cap = cv2.VideoCapture(image_path)
+image_path = "./input/images/100083.jpg"
+image_name = input("请输入图片名字：")
+input_image = "./input/images/" + image_name + ".jpg"
+cap = cv2.VideoCapture(input_image)
 # image = cv2.imread(image_path)
 time_count = 0
 
 # 获取文件名
-file_name = os.path.basename(image_path)
+file_name = os.path.basename(input_image)
 
 # 存储字典形式的关键点数据
 keypoints_dict = {}
@@ -366,12 +395,17 @@ assert osp.exists(model_path), 'Cannot find model at ' + model_path
 # model = get_model(vertex_num, joint_num, 'test')
 
 
-# 假设有4个GPU，初始化4个模型
-num_models = 4
-device = 'cuda'  # 可以替换为'cpu'或者具体的GPU，比如'cuda:0'
+# 假设有3个GPU，初始化3个模型，3是最佳的GPU数量
+gpu_num_models = 3
+gpu_device = 'cuda'  # 可以替换为'cpu'或者具体的GPU，比如'cuda:0'
+
+cpu_num_models = 1
+cpu_device = 'cpu'
 
 init_time = time.time()
-models = init_models(num_models, device)
+models = init_models(gpu_num_models, vertex_num, joint_num, gpu_device)
+# models.append(init_models(cpu_num_models, cpu_device))
+# models = init_models(cpu_num_models, cpu_device)
 
 # 获取YOLO识别到的人物关键点数据
 # person_keypoints_data = yolo_detected_data()

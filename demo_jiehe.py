@@ -316,8 +316,6 @@ for img_name in sorted(pose2d_result.keys()):
         targets = {}
         meta_info = {'bbox': bbox}
 
-        # image_count = 1
-        model_time = time.time()
         #调用模型进行前向推理，输出3D mesh的预测结果 (mesh_cam_render)，包括每个顶点的3D坐标
         with torch.no_grad():
             image_time = time.time()    
@@ -325,7 +323,7 @@ for img_name in sorted(pose2d_result.keys()):
             # print(f'{image_count} Image time: {time.time() - image_time} Sec')
             # image_count += 1
             model_time = time.time()
-            model_times.append(model_time - model_time)
+            model_times.append(model_time - image_time)
         # print(f'Model time: {time.time() - model_time} Sec')
 
         # draw output mesh
@@ -357,7 +355,7 @@ for img_name in sorted(pose2d_result.keys()):
 
         file_name = f'{output_dir}/{img_path.split("/")[-1][:-4]}_{idx}.jpg'
         # print("file name: ", file_name)
-        save_obj(mesh_cam_render, face, file_name=f'{output_dir}/{img_path.split("/")[-1][:-4]}_{idx}.obj')
+        # save_obj(mesh_cam_render, face, file_name=f'{output_dir}/{img_path.split("/")[-1][:-4]}_{idx}.obj')
         cv2.imwrite(file_name, original_img)
 
 all_model_time = time.time()

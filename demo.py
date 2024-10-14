@@ -50,10 +50,11 @@ def add_neck(joint_coord, joints_name):
     return joint_coord
 
 def parse_args():
+    img_idx = input("Enter the image index: ")
     parser = argparse.ArgumentParser()
     parser.add_argument('--gpu', type=str, dest='gpu_ids')
     parser.add_argument('--model_path', type=str, default='demo_checkpoint.pth.tar')
-    parser.add_argument('--img_idx', type=str, default='101570')
+    parser.add_argument('--img_idx', type=str, default=img_idx)
 
     args = parser.parse_args()
 
